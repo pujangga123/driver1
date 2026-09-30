@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser 3 Car Driving - No Collectibles</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a202c;
+        }
+        #game-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+        }
+        canvas {
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            image-rendering: pixelated; 
+        }
+    </style>
+</head>
+<body class="text-white flex flex-col items-center justify-center min-h-screen">
+
+    <div class="absolute top-4 left-0 right-0 text-center z-10 pointer-events-none">
+        <h1 class="text-3xl font-bold text-red-400 drop-shadow-md">Phaser 3 Car Driving</h1>
+        <p class="text-gray-300 mt-2">Press <kbd class="bg-gray-700 px-2 py-1 rounded">Spacebar</kbd> to drive, <kbd class="bg-gray-700 px-2 py-1 rounded">Left/Right/Up/Down</kbd> to steer</p>
+        <p class="text-yellow-400 text-sm mt-1">Free roam sandbox. Manual deceleration only.</p>
+    </div>
+
+    <div id="game-container"></div>
+
+    <script>
+        let player;
+        let cursors;
+
+        class MainScene extends Phaser.Scene {
+            constructor() {
+                super('MainScene');
+            }
+
+            preload() {
+                let carGraphics = this.add.graphics();
+                
+                carGraphics.fillStyle(0x111111, 1);
+                carGraphics.fillRect(8, 0, 12, 6);
+                carGraphics.fillRect(36, 0, 12, 6);
+                carGraphics.fillRect(8, 34, 12, 6);
+                carGraphics.fillRect(36, 34, 12, 6);
+                
+                carGraphics.fillStyle(0xef4444, 1);
+                carGraphics.fillRoundedRect(0, 4, 56, 32, 8);
+                
+                carGraphics.fillStyle(0x93c5fd, 0.8);
+                carGraphics.fillRoundedRect(34, 8, 10, 24, 3);
+                
+                carGraphics.fillStyle(0x1f2937, 0.8);
+                carGraphics.fillRoundedRect(6, 10, 8, 20, 2);
+
+                carGraphics.generateTexture('carSprite', 56, 40);
+                carGraphics.destroy();
+            }
+
+            create() {
+                this.add.grid(400, 300, 800, 600, 40, 40, 0x2d3748, 1, 0x4a5568, 0.5);
+                
+                player = this.physics.add.sprite(400, 300, 'carSprite');
+                player.setCollideWorldBounds(true);
+                player.setMaxVelocity(300);
+                
+                // Disable built-in drag completely
+                player.setDrag(0); 
+
+                cursors = this.input.keyboard.createCursorKeys();
+                player.targetAngle = player.rotation;
+            }
+
+            update(time, delta) {
+                const accelSpeed = 250; 
+                const turnRate = 0.004;
+
+                let inputX = 0;
+                let inputY = 0;
+
+                if (cursors.left.isDown) inputX -= 1;
+                if (cursors.right.isDown) inputX += 1;
+                if (cursors.up.isDown) inputY -= 1;
+                if (cursors.down.isDown) inputY += 1;
+
+                if (inputX !== 0 || inputY !== 0) {
+                    player.targetAngle = Math.atan2(inputY, inputX);
+                }
+
+                if (player.targetAngle !== undefined) {
+                    player.rotation = Phaser.Math.Angle.RotateTo(player.rotation, player.targetAngle, turnRate * delta);
+                }
+
+                if (cursors.space.isDown) {
+                    this.physics.velocityFromRotation(player.rotation, accelSpeed, player.body.acceleration);
+                } else {
+                    // Letting go of spacebar zeroes the acceleration
+                    player.setAcceleration(0);
+                    
+                    // Manual deceleration logic based strictly on vector math
+                    const decelRate = 0.5; // Deceleration speed
+                    let vx = player.body.velocity.x;
+                    let vy = player.body.velocity.y;
+                    let speed = Math.sqrt(vx * vx + vy * vy);
+                    
+                    if (speed > 0) {
+                        let newSpeed = speed - (decelRate * delta);
+                        
+                        if (newSpeed <= 0) {
+                            player.setVelocity(0, 0);
+                        } else {
+                            let ratio = newSpeed / speed;
+                            player.setVelocity(vx * ratio, vy * ratio);
+                        }
+                    }
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO, 
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false
+                }
+            },
+            scene: MainScene
+        };
+
+        const game = new Phaser.Game(config);
+
+    </script>
+</body>
+</html>

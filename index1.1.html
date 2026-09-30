@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser 3 Car Game - Acceleration</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.60.0/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        canvas {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        .instructions {
+            margin-top: 20px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .instructions span {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container"></div>
+    <div class="instructions">
+        Drive with <span>Arrow Keys</span> <br> 
+        <small style="color: #aaa;">Notice the smooth acceleration and drag-based deceleration.</small>
+    </div>
+
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    debug: false // Set to true to see hitboxes and vectors
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        const game = new Phaser.Game(config);
+
+        // Global variables for our scene
+        let player;
+        let cursors;
+        let targetRotation = 0;
+
+        // Physics constants
+        const MAX_VELOCITY = 350;
+        const ACCELERATION = 1000;
+        const DRAG = 800;
+        const ROTATION_SPEED = 0.12;
+
+        function preload() {
+            // No external assets required. We draw everything in memory.
+        }
+
+        function create() {
+            // 1. Draw a background grid to help visualize movement and speed
+            const bgGraphics = this.add.graphics();
+            bgGraphics.lineStyle(1, 0x222222, 1);
+            for (let x = 0; x <= 800; x += 50) {
+                bgGraphics.moveTo(x, 0);
+                bgGraphics.lineTo(x, 600);
+            }
+            for (let y = 0; y <= 600; y += 50) {
+                bgGraphics.moveTo(0, y);
+                bgGraphics.lineTo(800, y);
+            }
+            bgGraphics.strokePath();
+
+            // 2. Generate the car texture programmatically using Phaser Graphics
+            const carGraphics = this.add.graphics();
+            
+            // Tires
+            carGraphics.fillStyle(0x000000, 1);
+            carGraphics.fillRect(2, 12, 6, 14);  // Top Left
+            carGraphics.fillRect(32, 12, 6, 14); // Top Right
+            carGraphics.fillRect(2, 38, 6, 14);  // Bottom Left
+            carGraphics.fillRect(32, 38, 6, 14); // Bottom Right
+            
+            // Main Body (Blue/Cyan styling)
+            carGraphics.fillStyle(0x0277bd, 1); // Darker blue edge
+            carGraphics.fillRoundedRect(6, 4, 28, 56, 6);
+            carGraphics.fillStyle(0x29b6f6, 1); // Lighter blue center
+            carGraphics.fillRoundedRect(8, 6, 24, 52, 4);
+            
+            // Windshield (Dark glass)
+            carGraphics.fillStyle(0x111111, 0.9);
+            carGraphics.fillRoundedRect(9, 16, 22, 10, 3);
+            
+            // Rear window
+            carGraphics.fillStyle(0x111111, 0.9);
+            carGraphics.fillRoundedRect(10, 42, 20, 8, 2);
+            
+            // Headlights
+            carGraphics.fillStyle(0xffeb3b, 1); // Yellow glowing headlights
+            carGraphics.fillRoundedRect(9, 4, 7, 4, 2);
+            carGraphics.fillRoundedRect(24, 4, 7, 4, 2);
+            
+            // Taillights
+            carGraphics.fillStyle(0xd32f2f, 1); // Red taillights
+            carGraphics.fillRect(9, 56, 6, 3);
+            carGraphics.fillRect(25, 56, 6, 3);
+
+            // Bake into a texture and clear graphics to save memory
+            carGraphics.generateTexture('car-texture', 40, 64);
+            carGraphics.destroy();
+
+            // 3. Create Player Sprite and setup Physics
+            player = this.physics.add.sprite(400, 300, 'car-texture');
+            
+            // Keep the car bounded by the screen
+            player.setCollideWorldBounds(true);
+            
+            // Adjust the hitbox slightly for better collisions against edges
+            player.body.setSize(30, 54);
+
+            // Apply advanced physics properties for realistic motion
+            player.setsetMaxVelocity = player.setMaxVelocity(MAX_VELOCITY); 
+            
+            // 'Drag' acts as friction. When acceleration is 0, drag slows the car down.
+            player.setDrag(DRAG);
+
+            // 4. Setup Input mappings
+            cursors = this.input.keyboard.createCursorKeys();
+        }
+
+        function update() {
+            let inputX = 0;
+            let inputY = 0;
+
+            // Read keyboard input (opposites cancel out)
+            if (cursors.left.isDown) inputX -= 1;
+            if (cursors.right.isDown) inputX += 1;
+            if (cursors.up.isDown) inputY -= 1;
+            if (cursors.down.isDown) inputY += 1;
+
+            if (inputX !== 0 || inputY !== 0) {
+                // We have input. Normalize the vector so diagonal movement isn't faster.
+                let accelVector = new Phaser.Math.Vector2(inputX, inputY).normalize();
+                
+                // Apply acceleration to push the car in the input direction
+                player.setAcceleration(accelVector.x * ACCELERATION, accelVector.y * ACCELERATION);
+            } else {
+                // No input. Turn off acceleration. The 'drag' property will now smoothly decelerate the car.
+                player.setAcceleration(0, 0);
+            }
+
+            // Only update the target rotation if the car is actually moving fast enough.
+            // This prevents the car from snapping back to 0 degrees when it comes to a complete halt.
+            if (player.body.velocity.lengthSq() > 10) {
+                // Get the angle of the current velocity vector in radians.
+                // Phaser's angle 0 points Right. Our sprite is drawn facing Up.
+                // We add Math.PI / 2 (90 degrees) to align the sprite with the movement vector.
+                targetRotation = player.body.velocity.angle() + Math.PI / 2;
+            }
+
+            // Smoothly rotate the sprite towards the target rotation.
+            // RotateTo handles the shortest path (e.g., crossing the 360-degree mark).
+            player.rotation = Phaser.Math.Angle.RotateTo(player.rotation, targetRotation, ROTATION_SPEED);
+        }
+    </script>
+</body>
+</html>

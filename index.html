@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser Car Game - With Drag</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            background-color: #1a1a2e; 
+            color: #fff; 
+            font-family: 'Inter', sans-serif; 
+        }
+        canvas { 
+            border: 2px solid #444; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); 
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+<script>
+    const config = {
+        type: Phaser.AUTO,
+        width: 800,
+        height: 600,
+        physics: {
+            default: 'arcade',
+            arcade: {
+                debug: false
+            }
+        },
+        input: {
+            gamepad: true
+        },
+        scene: { preload, create, update }
+    };
+
+    let car;
+    let obstacle;
+    let cursors;
+    let keys;
+
+    const game = new Phaser.Game(config);
+
+    function preload() {
+        // No external assets to preload, we will generate them
+    }
+
+    function create() {
+        // Draw Grid Background for visual reference of speed
+        const graphics = this.add.graphics();
+        graphics.lineStyle(1, 0x333344, 0.8);
+        for(let i = 0; i <= 800; i += 40) {
+            graphics.moveTo(i, 0); graphics.lineTo(i, 600);
+        }
+        for(let i = 0; i <= 600; i += 40) {
+            graphics.moveTo(0, i); graphics.lineTo(800, i);
+        }
+        graphics.strokePath();
+
+        // Create Car Texture (facing right = 0 radians)
+        const carGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        // Car Body
+        carGraphics.fillStyle(0x00d2ff, 1);
+        carGraphics.fillRoundedRect(0, 0, 40, 24, 6); 
+        // Window
+        carGraphics.fillStyle(0x000000, 0.6);
+        carGraphics.fillRoundedRect(10, 4, 16, 16, 2);
+        // Headlights (Right side)
+        carGraphics.fillStyle(0xfffa65, 1);
+        carGraphics.fillRoundedRect(36, 2, 6, 6, 2); 
+        carGraphics.fillRoundedRect(36, 16, 6, 6, 2);
+        // Wheels
+        carGraphics.fillStyle(0x111111, 1);
+        carGraphics.fillRect(6, -3, 10, 4); // TL
+        carGraphics.fillRect(24, -3, 10, 4); // TR
+        carGraphics.fillRect(6, 23, 10, 4); // BL
+        carGraphics.fillRect(24, 23, 10, 4); // BR
+        carGraphics.generateTexture('car', 46, 30);
+
+        // Create Obstacle Texture (80x60 - 1/10th scale of 800x600)
+        const obsGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        obsGraphics.fillStyle(0xff4757, 1);
+        obsGraphics.fillRect(0, 0, 80, 60);
+        obsGraphics.lineStyle(4, 0xff6b81, 1);
+        obsGraphics.strokeRect(0, 0, 80, 60);
+        // Add some details to the box
+        obsGraphics.lineStyle(2, 0x2f3542, 0.5);
+        obsGraphics.moveTo(0, 0); obsGraphics.lineTo(80, 60);
+        obsGraphics.moveTo(80, 0); obsGraphics.lineTo(0, 60);
+        obsGraphics.generateTexture('obstacle', 80, 60);
+
+        // Add Obstacle at Center
+        obstacle = this.physics.add.sprite(400, 300, 'obstacle');
+        obstacle.setImmovable(true);
+
+        // Add Car
+        car = this.physics.add.sprite(400, 450, 'car');
+        car.setCollideWorldBounds(true);
+        car.body.onWorldBounds = true; // Enable world bounds collision event
+        
+        // RESTORED DRAG - Car will now slow down naturally when input is released
+        car.setDrag(700); 
+        
+        car.setMaxVelocity(150);
+        car.setBounce(0);
+
+        // Handle world bounds collision: Stop the car immediately
+        this.physics.world.on('worldbounds', (body) => {
+            if (body.gameObject === car) {
+                car.setVelocity(0, 0);
+            }
+        });
+
+        // Handle collision: Stop the car immediately upon hitting the obstacle
+        this.physics.add.collider(car, obstacle, (c, o) => {
+            // Zero out velocity to prevent sliding along the object
+            c.setVelocity(0, 0); 
+        });
+
+        // Setup Inputs
+        cursors = this.input.keyboard.createCursorKeys();
+        keys = this.input.keyboard.addKeys('W,A,S,D');
+    }
+
+    function update() {
+        let ix = 0;
+        let iy = 0;
+
+        // Read Keyboard
+        if (cursors.left.isDown || keys.A.isDown) ix -= 1;
+        if (cursors.right.isDown || keys.D.isDown) ix += 1;
+        if (cursors.up.isDown || keys.W.isDown) iy -= 1;
+        if (cursors.down.isDown || keys.S.isDown) iy += 1;
+
+        // Read Gamepad
+        if (this.input.gamepad.total > 0) {
+            const pad = this.input.gamepad.getPad(0);
+            if (pad.axes.length >= 2) {
+                const axisH = pad.axes[0].getValue();
+                const axisV = pad.axes[1].getValue();
+                if (Math.abs(axisH) > 0.1) ix = axisH;
+                if (Math.abs(axisV) > 0.1) iy = axisV;
+            }
+            if (pad.left) ix = -1;
+            if (pad.right) ix = 1;
+            if (pad.up) iy = -1;
+            if (pad.down) iy = 1;
+        }
+
+        const inputVec = new Phaser.Math.Vector2(ix, iy);
+
+        // If player is providing directional input
+        if (inputVec.lengthSq() > 0.01) {
+            inputVec.normalize();
+            
+            // Calculate target angle based strictly on INPUT
+            const targetAngle = inputVec.angle();
+            
+            // Gradually rotate to the target angle (shortest path)
+            car.rotation = Phaser.Math.Angle.RotateTo(car.rotation, targetAngle, 0.1);
+            
+            // Accelerate in the direction of the input
+            car.setAcceleration(inputVec.x * 600, inputVec.y * 600);
+        } else {
+            // If no input, remove acceleration
+            // Because drag is set to 400, the car will naturally decelerate
+            car.setAcceleration(0, 0);
+            
+            // Rotation is untouched when there is no input, so it stays pointing forward.
+        }
+    }
+</script>
+</body>
+</html>
